@@ -50,7 +50,7 @@ kprobe:smi_nvme_complete_rq
 
 interval:s:1
 {
-	print(time("%Y-%m-%d %H:%M:%S"));
+	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
 	print(@usecs);
 	clear(@usecs);
 }
