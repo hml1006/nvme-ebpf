@@ -48,5 +48,6 @@ kprobe:smi_nvme_complete_rq
 END
 {
 	clear(@ioopcode);
+	clear(@start);
 	clear(@cmd);
 }
