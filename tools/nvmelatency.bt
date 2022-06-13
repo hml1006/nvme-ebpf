@@ -35,10 +35,10 @@ kprobe:nvme_setup_cmd
 kprobe:nvme_complete_rq
 /@start[arg0]/
 {
-	$reg = (struct request*)arg0;
-	@cmd = (struct nvme_command*)@cmd[arg0];
+	$req = (struct request*)arg0;
+	$cmd = (struct nvme_command*)@cmd[arg0];
 	$disk = $req->rq_disk;
-	$opcode = $cmd->common.opcode & Oxff;
+	$opcode = $cmd->common.opcode & 0xff;
 	@usecs[$disk->disk_name,@ioopcode[$opcode]] = hist((nsecs - @start[arg0]) / 1000);
 	delete(@start[tid]);
 	delete(@cmd[tid]);
