@@ -48,6 +48,13 @@ kprobe:smi_nvme_complete_rq
 	
 }
 
+interval:s:1
+{
+	print(time("%Y-%m-%d %H:%M:%S"));
+	print(@usecs);
+	clear(@usecs);
+}
+
 END
 {
 	clear(@ioopcode);
