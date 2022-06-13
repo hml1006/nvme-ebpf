@@ -21,10 +21,10 @@ BEGIN
 	@ioopcode[0x15] = "nvme_cmd_resv_release";
 }
 
-kprobe:nvme_setup_cmd
+kprobe:smi_nvme_setup_cmd
 {
 	$req = (struct request*)arg1;
-	if($req->rq_disk) {
+	if($req->rq_disk != 0) {
 		@start[arg1] = nsecs;
 		@cmd[arg1] = arg2;
 	} else {
@@ -32,7 +32,7 @@ kprobe:nvme_setup_cmd
 	}
 }
 
-kprobe:nvme_complete_rq
+kprobe:smi_nvme_complete_rq
 /@start[arg0]/
 {
 	$req = (struct request*)arg0;
