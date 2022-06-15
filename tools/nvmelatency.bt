@@ -8,44 +8,41 @@ BEGIN
 
 	printf("Tracing nvme command latency.Hit Ctrl-C to end.\n");
 	// from 1inux/nvme h:
-	@ioopcode[0x00] = "nvme_cmd_flush";
-	@ioopcode[0x01] = "nvme_cmd_write";
-	@ioopcode[0x02] = "nvme_cmd_read";
-	@ioopcode[0x04] = "nvme_cmd_write_uncor";
-	@ioopcode[0x05] = "nvme_cmd_compare";
-	@ioopcode[0x08] = "nvme_cmd_write_zeroes";
-	@ioopcode[0x09] = "nvme_cmd_dsm";
-	@ioopcode[0x0d] = "nvne cmd_resv_register";
-	@ioopcode[0x0e] = "nvme_cmd_resv_report";
-	@ioopcode[0x11] = "nvme_cmd_resv_acquire";
-	@ioopcode[0x15] = "nvme_cmd_resv_release";
-	@ioopcode[0x79] = "nvme_cmd_zone_mgmt_send";
-	@ioopcode[0x7a] = "nvme_cmd_zone_mgmt_recv";
-	@ioopcode[0x7d] = "nvme_cmd_zone_append";
+	@ioopcode[0] = "nvme_cmd_read";
+	@ioopcode[1] = "nvme_cmd_write";
+	@ioopcode[2] = "nvme_cmd_flush";
+	@ioopcode[13] = "nvme_cmd_zone_append";
 }
 
 kprobe:smi_nvme_setup_cmd
+,kprobe:nvme_setup_cmd
 {
 	$req = (struct request*)arg1;
 	if($req->rq_disk != 0) {
 		@start[arg1] = nsecs;
-		@cmd[arg1] = arg2;
+		$flag = ($req->cmd_flags & ((1 << 8) - 1));
+		if ($flag <= 2 ||$flag == 13) {
+			@cmd_flags[arg1] = $flag;
+		}
+		
 	} else {
 		@admin_commands = count();
 	}
 }
-
 kprobe:smi_nvme_complete_rq
+,kprobe:nvme_complete_rq
 /@start[arg0]/
 {
 	$req = (struct request*)arg0;
-	$cmd = (struct nvme_command*)@cmd[arg0];
 	$disk = $req->rq_disk;
-	$opcode = $cmd->common.opcode & 0xff;
-	@usecs[$disk->disk_name,@ioopcode[$opcode]] = hist((nsecs - @start[arg0]) / 1000);
-	delete(@start[tid]);
-	delete(@cmd[tid]);
+	$flag = ($req->cmd_flags & ((1 << 8) - 1));
+	if ($flag <= 2 ||$flag == 13) {
+		$duration = (nsecs - @start[arg0]) / 1000;
+		@usecs[$disk->disk_name,@ioopcode[$flag]] = hist($duration);
+	}
 	
+	delete(@start[arg0]);
+	delete(@cmd_flags[arg0]);
 }
 
 interval:s:1
@@ -59,5 +56,6 @@ END
 {
 	clear(@ioopcode);
 	clear(@start);
-	clear(@cmd);
+	clear(@cmd_flags);
+	clear(@usecs);
 }
