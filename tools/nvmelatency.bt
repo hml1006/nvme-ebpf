@@ -48,7 +48,7 @@ interval:s:1
 	print(@usecs);
 	print(@data_stats);
 	print(@data);
-	clear(@usecs_stats)
+	clear(@usecs_stats);
 	clear(@data_stats);
 	clear(@usecs);
 	clear(@data);
