@@ -58,7 +58,7 @@ END
 {
 	clear(@ioopcode);
 	clear(@start);
-	clear(@usecs_stats)
+	clear(@usecs_stats);
 	clear(@data_stats);
 	clear(@usecs);
 	clear(@data);
