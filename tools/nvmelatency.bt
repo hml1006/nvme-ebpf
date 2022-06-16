@@ -12,8 +12,8 @@ BEGIN
 	@ioopcode[1] = "nvme_cmd_write";
 }
 
-kprobe:smi_nvme_setup_cmd
-,kprobe:nvme_setup_cmd
+kprobe:smi_nvme_setup_cmd,
+kprobe:nvme_setup_cmd
 {
 	$req = (struct request*)arg1;
 	if($req->rq_disk != 0) {
@@ -22,8 +22,8 @@ kprobe:smi_nvme_setup_cmd
 		@admin_commands = count();
 	}
 }
-kprobe:smi_nvme_complete_rq
-,kprobe:nvme_complete_rq
+kprobe:smi_nvme_complete_rq,
+kprobe:nvme_complete_rq
 /@start[arg0]/
 {
 	$req = (struct request*)arg0;
@@ -34,6 +34,8 @@ kprobe:smi_nvme_complete_rq
 		$duration = (nsecs - @start[arg0]) / 1000;
 		@usecs[$disk->disk_name, @ioopcode[$flag]] = hist($duration);
 		@data[$disk->disk_name, @ioopcode[$flag]] = lhist($data_len, 0, 262144, 16384);
+		@usecs_stats[$disk->disk_name, @ioopcode[$flag]] = stats($duration);
+		@data_stats[$disk->disk_name, @ioopcode[$flag]] = stats($data_len);
 	}
 	
 	delete(@start[arg0]);
@@ -42,8 +44,12 @@ kprobe:smi_nvme_complete_rq
 interval:s:1
 {
 	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
+	print(@usecs_stats);
 	print(@usecs);
+	print(@data_stats);
 	print(@data);
+	clear(@usecs_stats)
+	clear(@data_stats);
 	clear(@usecs);
 	clear(@data);
 }
@@ -52,6 +58,8 @@ END
 {
 	clear(@ioopcode);
 	clear(@start);
+	clear(@usecs_stats)
+	clear(@data_stats);
 	clear(@usecs);
 	clear(@data);
 }
