@@ -1,0 +1,23 @@
+#!/usr/bin/env bpftrace
+
+tracepoint:nvme:smi_nvme_sq
+{
+	$depth = 0;
+	if (args->sq_tail >= args->sq_head) {
+		$depth = args->sq_tail - args->sq_head;
+	} else {
+		$depth = 512 - (args->sq_head - args->sq_tail);
+	}
+	@depth[args->qid] = avg($depth);
+}
+
+interval:s:1
+{
+	print(@depth);
+	clear(@depth);
+}
+
+END
+{
+	clear(@depth);
+}

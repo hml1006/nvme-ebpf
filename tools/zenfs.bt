@@ -1,0 +1,9 @@
+#!/usr/bin/env bpftrace
+
+tracepoint:syscalls:sys_enter_pread64 
+{
+	if (comm == "rocksdb:high") {
+		print(ustack);
+		exit();
+	}
+}
