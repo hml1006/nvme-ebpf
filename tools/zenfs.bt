@@ -1,9 +1,9 @@
 #!/usr/bin/env bpftrace
 
-tracepoint:syscalls:sys_enter_pread64 
+usdt:/home/ubuntu20/rocksdb/db_bench:zbd:get_active_zone,
+usdt:/home/ubuntu20/rocksdb/db_bench:zbd:put_active_zone
+// usdt:/usr/sbin/mysqld:zbd:get_active_zone,
+//  usdt:/usr/sbin/mysqld:zbd:put_active_zone
 {
-	if (comm == "rocksdb:high") {
-		print(ustack);
-		exit();
-	}
+	printf("active zones: %d\n", arg0);
 }
