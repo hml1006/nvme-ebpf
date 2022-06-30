@@ -8,11 +8,14 @@ tracepoint:nvme:smi_nvme_sq
 	} else {
 		$depth = 512 - (args->sq_head - args->sq_tail);
 	}
-	@depth[args->qid] = avg($depth);
+	if ($depth > 0) {
+		@depth[args->qid, $depth] = count();
+	}
 }
 
-interval:s:1
+interval:s:30
 {
+	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
 	print(@depth);
 	clear(@depth);
 }

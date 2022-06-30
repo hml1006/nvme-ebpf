@@ -34,6 +34,8 @@ kprobe:nvme_complete_rq
 		@data[$disk->disk_name, @ioopcode[$flag]] = lhist($data_len, 0, 262144, 16384);
 		@usecs_stats[$disk->disk_name, @ioopcode[$flag]] = stats($duration);
 		@data_stats[$disk->disk_name, @ioopcode[$flag]] = stats($data_len);
+		@lat_avg[$disk->disk_name, @ioopcode[$flag]] = avg($duration);
+		@total[$disk->disk_name, @ioopcode[$flag]] = count();
 	}
 	
 	delete(@start[arg0]);

@@ -1,0 +1,7 @@
+#!/usr/bin/env bpftrace
+
+usdt:/usr/sbin/mysqld:zbd:wait_zone,
+usdt:/usr/sbin/mysqld:zbd:get_zone
+{
+        @zns[ustack] = count();
+}
