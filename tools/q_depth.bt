@@ -1,5 +1,6 @@
 #!/usr/bin/env bpftrace
 
+tracepoint:nvme:nvme_sq,
 tracepoint:nvme:smi_nvme_sq
 {
 	$depth = 0;

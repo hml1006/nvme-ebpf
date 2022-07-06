@@ -1,0 +1,63 @@
+#!/usr/bin/env bpftrace
+
+#include<linux/blkdev.h>
+#include<linux/nvme.h>
+
+BEGIN
+{
+
+	printf("Tracing nvme command latency.Hit Ctrl-C to end.\n");
+	// from 1inux/nvme h:
+	@ioopcode[0] = "nvme_cmd_read";
+	@ioopcode[1] = "nvme_cmd_write";
+}
+
+kprobe:smi_nvme_setup_cmd,
+kprobe:nvme_setup_cmd
+{
+	$req = (struct request*)arg1;
+	if($req->rq_disk != 0) {
+		@start[arg1] = nsecs;
+	}
+}
+kprobe:smi_nvme_complete_rq,
+kprobe:nvme_complete_rq
+/@start[arg0]/
+{
+	$req = (struct request*)arg0;
+	$disk = $req->rq_disk;
+	$data_len = $req->__data_len;
+	$flag = ($req->cmd_flags & ((1 << 8) - 1));
+	if ($flag < 2) {
+		$duration = (nsecs - @start[arg0]) / 1000;
+		@usecs[$disk->disk_name, @ioopcode[$flag]] = hist($duration);
+		@data[$disk->disk_name, @ioopcode[$flag]] = lhist($data_len, 0, 262144, 16384);
+		@usecs_stats[$disk->disk_name, @ioopcode[$flag]] = stats($duration);
+		@data_stats[$disk->disk_name, @ioopcode[$flag]] = stats($data_len);
+	}
+	
+	delete(@start[arg0]);
+}
+
+interval:s:1800
+{
+	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
+	print(@usecs_stats);
+	print(@data_stats);
+	print(@usecs);
+	print(@data);
+	clear(@usecs_stats);
+	clear(@data_stats);
+	clear(@usecs);
+	clear(@data);
+}
+
+END
+{
+	clear(@ioopcode);
+	clear(@start);
+	clear(@usecs_stats);
+	clear(@data_stats);
+	clear(@usecs);
+	clear(@data);
+}
