@@ -2,7 +2,6 @@
 
 BEGIN
 {
-
         printf("Tracing nvme command latency.Hit Ctrl-C to end.\n");
 }
 
@@ -10,10 +9,13 @@ tracepoint:syscalls:sys_enter_pread64
 / pid == $1 /
 {
 	@data = hist(args->count);
+	@data_stack[ustack] = hist(args->count);
 }
 
-interval:s:1800
+interval:s:120
 {
 	print(@data);
+	print(@data_stack);
 	clear(@data);
+	clear(@data_stack);
 }
