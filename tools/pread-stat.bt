@@ -12,10 +12,11 @@ tracepoint:syscalls:sys_enter_pread64
 	@data_stack[ustack] = hist(args->count);
 }
 
-interval:s:120
+interval:s:1800
 {
 	print(@data);
 	print(@data_stack);
 	clear(@data);
 	clear(@data_stack);
+	exit();
 }
