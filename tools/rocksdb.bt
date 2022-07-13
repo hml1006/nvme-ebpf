@@ -37,6 +37,7 @@ kprobe:nvme_complete_rq
 		$duration = (nsecs - @start[arg0]) / 1000;
 		@nvme_count[$disk->disk_name, @ioopcode[$flag]] = count();
 		@nvme_avg[$disk->disk_name, @ioopcode[$flag]] = avg($duration);
+		@nvme_sum[$disk->disk_name, @ioopcode[$flag]] = sum($duration);
 		@usecs[$disk->disk_name, @ioopcode[$flag]] = hist($duration);
 		@data[$disk->disk_name, @ioopcode[$flag]] = lhist($data_len, 0, 262144, 16384);
 		@usecs_stats[$disk->disk_name, @ioopcode[$flag]] = stats($duration);
@@ -78,6 +79,7 @@ interval:s:1800
 
 	print(@nvme_count);
 	print(@nvme_avg);
+	print(@nvme_sum);
 	print(@usecs_stats);
 	print(@data_stats);
 	print(@usecs);
@@ -94,6 +96,7 @@ interval:s:1800
 
 	clear(@nvme_count);
 	clear(@nvme_avg);
+	clear(@nvme_sum);
 	clear(@usecs_stats);
 	clear(@data_stats);
 	clear(@usecs);
@@ -107,9 +110,16 @@ END
 	clear(@get_sum);
 	clear(@get_stats);
 	clear(@get_hist);
-	clear(@pread_data);
 	clear(@ioopcode);
 	clear(@start);
+	clear(@start_rdb);
+
+	clear(@pread_count);
+	clear(@pread_data);
+
+	clear(@nvme_count);
+	clear(@nvme_avg);
+	clear(@nvme_sum);
 	clear(@usecs_stats);
 	clear(@data_stats);
 	clear(@usecs);
