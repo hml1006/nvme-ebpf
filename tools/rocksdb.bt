@@ -55,20 +55,20 @@ uprobe:/usr/lib64/mysql/plugin/ha_rocksdb.so:_ZN7rocksdb6DBImpl7GetImplERKNS_11R
 uretprobe:/usr/lib64/mysql/plugin/ha_rocksdb.so:_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE
 / @start_rdb[tid] /
 {
-	@get = count();
+	@get_count = count();
 	$latency = (nsecs - @start_rdb[tid]) / 1000;
 	@get_avg = avg($latency);
 	@get_sum = sum($latency);
 	@get_stats = stats($latency);
 	@get_hist = hist($latency);
 
-	delete(@start[tid]);
+	delete(@start_rdb[tid]);
 }
 
 interval:s:1800
 {
 	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
-	print(@get);
+	print(@get_count);
 	print(@get_avg);
 	print(@get_sum);
 	print(@get_stats);
@@ -85,7 +85,7 @@ interval:s:1800
 	print(@usecs);
 	print(@data);
 
-	clear(@get);
+	clear(@get_count);
 	clear(@get_avg);
 	clear(@get_sum);
 	clear(@get_stats);
@@ -105,7 +105,7 @@ interval:s:1800
 
 END
 {
-	clear(@get);
+	clear(@get_count);
 	clear(@get_avg);
 	clear(@get_sum);
 	clear(@get_stats);
