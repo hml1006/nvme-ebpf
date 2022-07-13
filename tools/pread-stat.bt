@@ -6,7 +6,7 @@ BEGIN
 }
 
 tracepoint:syscalls:sys_enter_pread64
-/ pid == $1 /
+/ comm == "mysqld" /
 {
 	@data = hist(args->count);
 	@data_stack[ustack] = hist(args->count);
