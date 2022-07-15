@@ -11,6 +11,10 @@ bpf_src = '''
 #include<linux/nvme.h>
 #include<linux/genhd.h>
 
+struct nvme_ns {
+
+};
+
 enum {
 	COUNTER = 0,
 	LAT_SUM,
@@ -157,13 +161,20 @@ bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocks
 bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE', \
 	fn_name=b'do_uretprobe_dbimpl_get_exit')
 
-interval=300
+interval=600
+exiting=0
 
 class NvmeKey(ctypes.Structure):
 	_fields_ = [('key', ctypes.c_char * 32)]
 
+print('Press Ctl+C to stop')
 while True:
-	sleep(interval)
+	if exiting == 1:
+		exit()
+	try:
+		sleep(interval)
+	except KeyboardInterrupt:
+		exiting=1
 	pread_stats=bpf['pread_stats']
 	pread_lat=bpf['pread_lat']
 	pread_data=bpf['pread_data']
@@ -180,7 +191,7 @@ while True:
 
 	print('-------------- %s -------------' % (datetime.now().strftime('%Y-%m-%d, %H:%M:%S')))
 	print('__________________pread____________________')
-	print('count: %d, latency total: %d, latency avg: %d, bytes total: %d MB, bytes avg: %d KB' % \
+	print('count: %d, latency total: %d us, latency avg: %d us, bytes total: %d MB, bytes avg: %d KB' % \
 		(pread_counter, pread_lat_sum, avg_lat, pread_data_sum / (1024 * 1024), avg_data / 1024))
 	pread_stats.clear()
 	print('')
@@ -219,17 +230,17 @@ while True:
 		if nvme_count != 0:
 			nvme_lat_avg=nvme_lat_sum / nvme_count
 			nvme_bytes_avg=nvme_bytes_sum / nvme_count
-			print('%s read ======> count: %d, latency total: %d, latency avg: %d, bytes total: %d MB, bytes avg: %d KB\n' % 
+			print('%s read ======> count: %d, latency total: %d us, latency avg: %d us, bytes total: %d MB, bytes avg: %d KB\n' % 
 				(dev.key, nvme_count, nvme_lat_sum, nvme_lat_avg, nvme_bytes_sum / (1024 * 1024), nvme_bytes_avg / 1024))
 			print('')
 			if dev.key == 'nvme0n1':
 				std_nvme_lat_hist.print_log2_hist('latency/us')
 				print('')
-				std_nvme_data_hist.print_log2_hist('read/bytes')
+				std_nvme_data_hist.print_log2_hist('read/KB')
 			elif dev.key == 'smi_nvme0n1':
 				smi_nvme_lat_hist.print_log2_hist('latency/us')
 				print('')
-				smi_nvme_data_hist.print_log2_hist('read/bytes')
+				smi_nvme_data_hist.print_log2_hist('read/KB')
 	std_nvme_lat_hist.clear()
 	std_nvme_data_hist.clear()
 	smi_nvme_lat_hist.clear()
@@ -248,6 +259,6 @@ while True:
 		get_lat_avg=get_lat_sum / get_count
 	get_stats.clear()
 	print('____________________get_________________')
-	print('count: %d, latency total: %d, latency avg: %d\n' % (get_count, get_lat_sum, get_lat_avg))
+	print('count: %d, latency total: %d us, latency avg: %d us\n' % (get_count, get_lat_sum, get_lat_avg))
 	get_lat.print_log2_hist('latency/us')
 	get_lat.clear()
