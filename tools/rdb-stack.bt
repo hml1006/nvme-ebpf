@@ -1,0 +1,9 @@
+#!/usr/bin/env bpftrace
+
+uprobe:/usr/lib64/mysql/plugin/ha_rocksdb.so:_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE
+{
+	print(ustack);
+	exit();
+}
+
+
