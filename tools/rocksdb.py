@@ -63,13 +63,21 @@ struct nvme_key_t {
 };
 
 BPF_HASH(nvme_start, struct request *);
-BPF_HASH(nvme_count, struct nvme_key_t);
-BPF_HASH(nvme_lat, struct nvme_key_t);
-BPF_HASH(nvme_data, struct nvme_key_t);
-BPF_HISTOGRAM(std_nvme_lat_hist);
-BPF_HISTOGRAM(std_nvme_data_hist);
-BPF_HISTOGRAM(smi_nvme_lat_hist);
-BPF_HISTOGRAM(smi_nvme_data_hist);
+BPF_HASH(nvme_read_count, struct nvme_key_t);
+BPF_HASH(nvme_read_lat, struct nvme_key_t);
+BPF_HASH(nvme_read_len, struct nvme_key_t);
+BPF_HISTOGRAM(std_nvme_read_lat_hist);
+BPF_HISTOGRAM(std_nvme_read_len_hist);
+BPF_HISTOGRAM(smi_nvme_read_lat_hist);
+BPF_HISTOGRAM(smi_nvme_read_len_hist);
+
+BPF_HASH(nvme_write_count, struct nvme_key_t);
+BPF_HASH(nvme_write_lat, struct nvme_key_t);
+BPF_HASH(nvme_write_len, struct nvme_key_t);
+BPF_HISTOGRAM(std_nvme_write_lat_hist);
+BPF_HISTOGRAM(std_nvme_write_len_hist);
+BPF_HISTOGRAM(smi_nvme_write_lat_hist);
+BPF_HISTOGRAM(smi_nvme_write_len_hist);
 
 int do_nvme_setup_cmd(struct pt_regs *ctx, struct nvme_ns *ns, struct request *req) {
     if (req->rq_disk == NULL) {
@@ -91,7 +99,7 @@ int do_nvme_complete_rq(struct pt_regs *ctx, struct request *req) {
 	return 0;
     nvme_start.delete(&req);
     u32 flag = (req->cmd_flags & ((1 << 8) - 1));
-    if (flag != 0) 
+    if (flag >= 2) // only record read and write command
 	return 0;
 
     struct nvme_key_t key;
@@ -99,15 +107,29 @@ int do_nvme_complete_rq(struct pt_regs *ctx, struct request *req) {
     bpf_probe_read_kernel_str(key.key, DISK_NAME_LEN, req->rq_disk->disk_name);
     u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
     u32 data_len = req->__data_len;
-    nvme_count.atomic_increment(key);
-    nvme_lat.atomic_increment(key, usecs);
-    nvme_data.atomic_increment(key, data_len);
-    if (req->rq_disk->disk_name[0] == 's') {
-    	smi_nvme_lat_hist.atomic_increment(bpf_log2l(usecs));
-    	smi_nvme_data_hist.atomic_increment(bpf_log2l(data_len / 1024));
+
+    if (flag == 0) {
+	nvme_read_count.atomic_increment(key);
+	nvme_read_lat.atomic_increment(key, usecs);
+	nvme_read_len.atomic_increment(key, data_len);
+	if (req->rq_disk->disk_name[0] == 's') {
+		smi_nvme_read_lat_hist.atomic_increment(bpf_log2l(usecs));
+		smi_nvme_read_len_hist.atomic_increment(bpf_log2l(data_len / 1024));
+	} else {
+		std_nvme_read_lat_hist.atomic_increment(bpf_log2l(usecs));
+		std_nvme_read_len_hist.atomic_increment(bpf_log2l(data_len / 1024));
+	}
     } else {
-    	std_nvme_lat_hist.atomic_increment(bpf_log2l(usecs));
-    	std_nvme_data_hist.atomic_increment(bpf_log2l(data_len / 1024));
+	nvme_write_count.atomic_increment(key);
+	nvme_write_lat.atomic_increment(key, usecs);
+	nvme_write_len.atomic_increment(key, data_len);
+	if (req->rq_disk->disk_name[0] == 's') {
+		smi_nvme_write_lat_hist.atomic_increment(bpf_log2l(usecs));
+		smi_nvme_write_len_hist.atomic_increment(bpf_log2l(data_len / 1024));
+	} else {
+		std_nvme_write_lat_hist.atomic_increment(bpf_log2l(usecs));
+		std_nvme_write_len_hist.atomic_increment(bpf_log2l(data_len / 1024));
+	}
     }
     
     return 0;
@@ -161,20 +183,17 @@ bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocks
 bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE', \
 	fn_name=b'do_uretprobe_dbimpl_get_exit')
 
-interval=600
-exiting=0
+interval=300
 
 class NvmeKey(ctypes.Structure):
 	_fields_ = [('key', ctypes.c_char * 32)]
 
 print('Press Ctl+C to stop')
 while True:
-	if exiting == 1:
-		exit()
 	try:
 		sleep(interval)
 	except KeyboardInterrupt:
-		exiting=1
+		exit()
 	pread_stats=bpf['pread_stats']
 	pread_lat=bpf['pread_lat']
 	pread_data=bpf['pread_data']
@@ -201,13 +220,21 @@ while True:
 	pread_data.print_log2_hist('read/KB')
 	pread_data.clear()
 
-	nvme_count_stats=bpf['nvme_count']
-	nvme_lat_stats=bpf['nvme_lat']
-	nvme_bytes_stats=bpf['nvme_data']
-	std_nvme_lat_hist=bpf['std_nvme_lat_hist']
-	std_nvme_data_hist=bpf['std_nvme_data_hist']
-	smi_nvme_lat_hist=bpf['smi_nvme_lat_hist']
-	smi_nvme_data_hist=bpf['smi_nvme_data_hist']
+	nvme_read_count_stats=bpf['nvme_read_count']
+	nvme_read_lat_stats=bpf['nvme_read_lat']
+	nvme_read_len_stats=bpf['nvme_read_len']
+	std_nvme_read_lat_hist=bpf['std_nvme_read_lat_hist']
+	std_nvme_read_len_hist=bpf['std_nvme_read_len_hist']
+	smi_nvme_read_lat_hist=bpf['smi_nvme_read_lat_hist']
+	smi_nvme_read_len_hist=bpf['smi_nvme_read_len_hist']
+
+	nvme_write_count_stats=bpf['nvme_write_count']
+	nvme_write_lat_stats=bpf['nvme_write_lat']
+	nvme_write_len_stats=bpf['nvme_write_len']
+	std_nvme_write_lat_hist=bpf['std_nvme_write_lat_hist']
+	std_nvme_write_len_hist=bpf['std_nvme_write_len_hist']
+	smi_nvme_write_lat_hist=bpf['smi_nvme_write_lat_hist']
+	smi_nvme_write_len_hist=bpf['smi_nvme_write_len_hist']
 
 	print('____________________nvme_____________________')
 
@@ -216,38 +243,75 @@ while True:
 	nvme0n1.key = 'nvme0n1'.encode()
 	smi_nvme0n1 = NvmeKey()
 	smi_nvme0n1.key = 'smi_nvme0n1'.encode()
+	# read
 	for dev in [nvme0n1, smi_nvme0n1]:
-		if dev not in nvme_count_stats:
+		if dev not in nvme_read_count_stats:
 			continue
-		nvme_count=nvme_count_stats[dev].value
+		nvme_read_count=nvme_read_count_stats[dev].value
 		if count <= 0:
 			continue
-		nvme_lat_sum=nvme_lat_stats[dev].value
-		nvme_bytes_sum=nvme_bytes_stats[dev].value
-		nvme_lat_avg=0
+		nvme_read_lat_sum=nvme_read_lat_stats[dev].value
+		nvme_bytes_sum=nvme_read_len_stats[dev].value
+		nvme_read_lat_avg=0
 		nvme_bytes_avg=0
 
-		if nvme_count != 0:
-			nvme_lat_avg=nvme_lat_sum / nvme_count
-			nvme_bytes_avg=nvme_bytes_sum / nvme_count
+		if nvme_read_count != 0:
+			nvme_read_lat_avg=nvme_read_lat_sum / nvme_read_count
+			nvme_bytes_avg=nvme_bytes_sum / nvme_read_count
 			print('%s read ======> count: %d, latency total: %d us, latency avg: %d us, bytes total: %d MB, bytes avg: %d KB\n' % 
-				(dev.key, nvme_count, nvme_lat_sum, nvme_lat_avg, nvme_bytes_sum / (1024 * 1024), nvme_bytes_avg / 1024))
-			print('')
+				(dev.key, nvme_read_count, nvme_read_lat_sum, nvme_read_lat_avg, nvme_bytes_sum / (1024 * 1024), nvme_bytes_avg / 1024))
 			if dev.key == 'nvme0n1':
-				std_nvme_lat_hist.print_log2_hist('latency/us')
+				std_nvme_read_lat_hist.print_log2_hist('latency/us')
 				print('')
-				std_nvme_data_hist.print_log2_hist('read/KB')
+				std_nvme_read_len_hist.print_log2_hist('read/KB')
+				print('')
 			elif dev.key == 'smi_nvme0n1':
-				smi_nvme_lat_hist.print_log2_hist('latency/us')
+				smi_nvme_read_lat_hist.print_log2_hist('latency/us')
 				print('')
-				smi_nvme_data_hist.print_log2_hist('read/KB')
-	std_nvme_lat_hist.clear()
-	std_nvme_data_hist.clear()
-	smi_nvme_lat_hist.clear()
-	smi_nvme_data_hist.clear()
-	nvme_count_stats.clear()
-	nvme_lat_stats.clear()
-	nvme_bytes_stats.clear()
+				smi_nvme_read_len_hist.print_log2_hist('read/KB')
+				print('')
+	# write
+	for dev in [nvme0n1, smi_nvme0n1]:
+		if dev not in nvme_write_count_stats:
+			continue
+		nvme_write_count=nvme_write_count_stats[dev].value
+		if count <= 0:
+			continue
+		nvme_write_lat_sum=nvme_write_lat_stats[dev].value
+		nvme_bytes_sum=nvme_write_len_stats[dev].value
+		nvme_write_lat_avg=0
+		nvme_bytes_avg=0
+
+		if nvme_write_count != 0:
+			nvme_write_lat_avg=nvme_write_lat_sum / nvme_write_count
+			nvme_bytes_avg=nvme_bytes_sum / nvme_write_count
+			print('%s write ======> count: %d, latency total: %d us, latency avg: %d us, bytes total: %d MB, bytes avg: %d KB\n' % 
+				(dev.key, nvme_write_count, nvme_write_lat_sum, nvme_write_lat_avg, nvme_bytes_sum / (1024 * 1024), nvme_bytes_avg / 1024))
+			if dev.key == 'nvme0n1':
+				std_nvme_write_lat_hist.print_log2_hist('latency/us')
+				print('')
+				std_nvme_write_len_hist.print_log2_hist('write/KB')
+				print('')
+			elif dev.key == 'smi_nvme0n1':
+				smi_nvme_write_lat_hist.print_log2_hist('latency/us')
+				print('')
+				smi_nvme_write_len_hist.print_log2_hist('write/KB')
+				print('')
+	std_nvme_read_lat_hist.clear()
+	std_nvme_read_len_hist.clear()
+	smi_nvme_read_lat_hist.clear()
+	smi_nvme_read_len_hist.clear()
+	nvme_read_count_stats.clear()
+	nvme_read_lat_stats.clear()
+	nvme_read_len_stats.clear()
+
+	std_nvme_write_lat_hist.clear()
+	std_nvme_write_len_hist.clear()
+	smi_nvme_write_lat_hist.clear()
+	smi_nvme_write_len_hist.clear()
+	nvme_write_count_stats.clear()
+	nvme_write_lat_stats.clear()
+	nvme_write_len_stats.clear()
 
 	get_stats=bpf['get_stats']
 	get_lat=bpf['get_lat']
