@@ -163,6 +163,34 @@ int do_uretprobe_dbimpl_get_exit(struct pt_regs *ctx) {
     return 0;
 }
 
+BPF_ARRAY(put_stats, u64, MAX_STATS);
+BPF_HASH(put_start, u64);
+BPF_HISTOGRAM(put_lat, u64);
+
+int do_uprobe_dbimp_put_enter(struct pt_regs *ctx) {
+    u64 tid = bpf_get_current_pid_tgid();
+    u64 start = bpf_ktime_get_ns();
+
+    put_start.update(&tid, &start);
+
+    return 0;
+}
+
+int do_uretprobe_dbimpl_put_exit(struct pt_regs *ctx) {
+    u64 tid = bpf_get_current_pid_tgid();
+    u64 *start = put_start.lookup(&tid);
+    if (start == 0)
+	return 0;
+    u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
+    put_start.delete(&tid);
+
+    put_stats.atomic_increment(COUNTER);
+    put_stats.atomic_increment(LAT_SUM, usecs);
+    put_lat.atomic_increment(bpf_log2l(usecs));
+
+    return 0;
+}
+
 '''
 
 bpf = None
@@ -182,7 +210,22 @@ bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocks
 	fn_name=b'do_uprobe_dbimp_get_enter')
 bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE', \
 	fn_name=b'do_uretprobe_dbimpl_get_exit')
-
+bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl22UnorderedWriteMemtableERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEmmm', \
+	fn_name=b'do_uprobe_dbimp_put_enter')
+bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl22UnorderedWriteMemtableERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEmmm', \
+	fn_name=b'do_uretprobe_dbimpl_put_exit')
+bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl9WriteImplERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmbS8_mPNS_18PreReleaseCallbackE', \
+	fn_name=b'do_uprobe_dbimp_put_enter')
+bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl9WriteImplERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmbS8_mPNS_18PreReleaseCallbackE', \
+	fn_name=b'do_uretprobe_dbimpl_put_exit')
+bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl18PipelinedWriteImplERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmbS8_', \
+	fn_name=b'do_uprobe_dbimp_put_enter')
+bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl18PipelinedWriteImplERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmbS8_', \
+	fn_name=b'do_uretprobe_dbimpl_put_exit')
+bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl16WriteImplWALOnlyEPNS_11WriteThreadERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmSA_mPNS_18PreReleaseCallbackENS0_11AssignOrderENS0_14PublishLastSeqEb', \
+	fn_name=b'do_uprobe_dbimp_put_enter')
+bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl16WriteImplWALOnlyEPNS_11WriteThreadERKNS_12WriteOptionsEPNS_10WriteBatchEPNS_13WriteCallbackEPmmSA_mPNS_18PreReleaseCallbackENS0_11AssignOrderENS0_14PublishLastSeqEb', \
+	fn_name=b'do_uretprobe_dbimpl_put_exit')
 interval=300
 
 class NvmeKey(ctypes.Structure):
@@ -326,3 +369,17 @@ while True:
 	print('count: %d, latency total: %d us, latency avg: %d us\n' % (get_count, get_lat_sum, get_lat_avg))
 	get_lat.print_log2_hist('latency/us')
 	get_lat.clear()
+
+	put_stats=bpf['put_stats']
+	put_lat=bpf['put_lat']
+
+	put_count=put_stats[0].value
+	put_lat_sum=put_stats[1].value
+	put_lat_avg=0
+	if put_count > 0:
+		put_lat_avg=put_lat_sum / put_count
+	put_stats.clear()
+	print('____________________put_________________')
+	print('count: %d, latency total: %d us, latency avg: %d us\n' % (put_count, put_lat_sum, put_lat_avg))
+	put_lat.print_log2_hist('latency/us')
+	put_lat.clear()
