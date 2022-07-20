@@ -39,7 +39,7 @@ kprobe:nvme_complete_rq
 	delete(@start[arg0]);
 }
 
-interval:s:1800
+interval:s:5
 {
 	time("======= %Y-%m-%d %H:%M:%S  ======================\n");
 	print(@usecs_stats);
