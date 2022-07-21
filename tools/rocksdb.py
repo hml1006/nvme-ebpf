@@ -1,6 +1,5 @@
 #!/usr/bin/python
 
-from itertools import count
 from bcc import BPF
 from datetime import datetime
 from time import sleep
@@ -248,7 +247,7 @@ while True:
 		if dev not in nvme_read_count_stats:
 			continue
 		nvme_read_count=nvme_read_count_stats[dev].value
-		if count <= 0:
+		if nvme_read_count <= 0:
 			continue
 		nvme_read_lat_sum=nvme_read_lat_stats[dev].value
 		nvme_bytes_sum=nvme_read_len_stats[dev].value
@@ -275,7 +274,7 @@ while True:
 		if dev not in nvme_write_count_stats:
 			continue
 		nvme_write_count=nvme_write_count_stats[dev].value
-		if count <= 0:
+		if nvme_write_count <= 0:
 			continue
 		nvme_write_lat_sum=nvme_write_lat_stats[dev].value
 		nvme_bytes_sum=nvme_write_len_stats[dev].value
