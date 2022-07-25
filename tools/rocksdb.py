@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import sys
 from bcc import BPF
 from datetime import datetime
 from time import sleep
@@ -166,6 +167,10 @@ int do_uretprobe_dbimpl_get_exit(struct pt_regs *ctx) {
 
 bpf = None
 
+out=sys.stdout
+
+if sys.argv[1]:
+	sys.stdout=open(sys.argv[1], 'a+')
 with open('/var/run/mysqld/mysqld.pid', 'r') as f:
 	pid = f.readline()
 	if not pid or len(pid) == 0:
@@ -182,7 +187,7 @@ bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocks
 bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE', \
 	fn_name=b'do_uretprobe_dbimpl_get_exit')
 
-interval=5
+interval=1800
 
 class NvmeKey(ctypes.Structure):
 	_fields_ = [('key', ctypes.c_char * 32)]
@@ -325,3 +330,5 @@ while True:
 	print('count: %d, latency total: %d us, latency avg: %d us\n' % (get_count, get_lat_sum, get_lat_avg))
 	get_lat.print_log2_hist('latency/us')
 	get_lat.clear()
+	print('')
+	sys.exit()
