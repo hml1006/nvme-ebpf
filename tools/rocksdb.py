@@ -169,7 +169,7 @@ bpf = None
 
 out=sys.stdout
 
-if sys.argv[1]:
+if len(sys.argv) > 1:
 	sys.stdout=open(sys.argv[1], 'a+')
 with open('/var/run/mysqld/mysqld.pid', 'r') as f:
 	pid = f.readline()
