@@ -11,6 +11,9 @@ bpf_src = '''
 #include<linux/nvme.h>
 #include<linux/genhd.h>
 
+// if latency bigger than this value, maybe error, us
+#define ERR_LATENCY	(5000*1000)
+
 struct nvme_ns {
 
 };
@@ -50,6 +53,8 @@ TRACEPOINT_PROBE(syscalls, sys_exit_pread64) {
 	return 0;
     pread_start.delete(&tid);
     u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
+    if (usecs > ERR_LATENCY)
+	return 0;
     pread_stats.atomic_increment(COUNTER);
     pread_stats.atomic_increment(LAT_SUM, usecs);
     pread_stats.atomic_increment(BYTES_SUM, args->ret);
@@ -98,6 +103,9 @@ int do_nvme_complete_rq(struct pt_regs *ctx, struct request *req) {
     if (start == 0)
 	return 0;
     nvme_start.delete(&req);
+    u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
+    if (usecs > ERR_LATENCY)
+	return 0;
     u32 flag = (req->cmd_flags & ((1 << 8) - 1));
     if (flag >= 2) // only record read and write command
 	return 0;
@@ -105,7 +113,7 @@ int do_nvme_complete_rq(struct pt_regs *ctx, struct request *req) {
     struct nvme_key_t key;
     __builtin_memset(key.key, 0, sizeof(key.key));
     bpf_probe_read_kernel_str(key.key, DISK_NAME_LEN, req->rq_disk->disk_name);
-    u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
+
     u32 data_len = req->__data_len;
 
     if (flag == 0) {
@@ -155,7 +163,8 @@ int do_uretprobe_dbimpl_get_exit(struct pt_regs *ctx) {
 	return 0;
     u64 usecs = (bpf_ktime_get_ns() - *start) / 1000;
     get_start.delete(&tid);
-
+    if (usecs > ERR_LATENCY)
+	return 0;
     get_stats.atomic_increment(COUNTER);
     get_stats.atomic_increment(LAT_SUM, usecs);
     get_lat.atomic_increment(bpf_log2l(usecs));
@@ -187,7 +196,7 @@ bpf.attach_uprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocks
 bpf.attach_uretprobe(name=b'/usr/lib64/mysql/plugin/ha_rocksdb.so', sym=b'_ZN7rocksdb6DBImpl7GetImplERKNS_11ReadOptionsERKNS_5SliceERNS0_14GetImplOptionsE', \
 	fn_name=b'do_uretprobe_dbimpl_get_exit')
 
-interval=1800
+interval=3600
 
 class NvmeKey(ctypes.Structure):
 	_fields_ = [('key', ctypes.c_char * 32)]
